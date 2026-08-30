@@ -15,20 +15,46 @@ export const shopController = {
 
   async updateProfile(req: AuthRequest, res: Response): Promise<void> {
     const { name, ownerName, phone, address, settings } = req.body;
-    const shop = await Shop.findByIdAndUpdate(
-      req.user!.shopId,
-      {
-        $set: {
-          ...(name && { name: name.trim() }),
-          ...(ownerName && { ownerName: ownerName.trim() }),
-          ...(phone && { phone: phone.trim() }),
-          ...(address && { address }),
-          ...(settings && { settings }),
-        },
-      },
-      { new: true }
-    );
-    res.json({ success: true, shop });
+
+    const existingShop = await Shop.findById(req.user!.shopId);
+    if (!existingShop) {
+      res.status(404).json({ success: false, message: 'Shop not found' });
+      return;
+    }
+
+    let formattedAddress = address;
+    if (typeof address === 'string') {
+      formattedAddress = { street: address.trim(), city: '', state: '', pincode: '' };
+    }
+
+    const cleanPhone = phone ? phone.replace(/\D/g, '').slice(-10) : undefined;
+
+    if (name) existingShop.name = name.trim();
+    if (ownerName) existingShop.ownerName = ownerName.trim();
+    if (cleanPhone) existingShop.phone = cleanPhone;
+    if (formattedAddress !== undefined) existingShop.address = formattedAddress;
+    if (settings) {
+      existingShop.settings = {
+        currency: settings.currency || existingShop.settings.currency || 'INR',
+        smsNotificationsEnabled:
+          settings.smsNotificationsEnabled !== undefined
+            ? settings.smsNotificationsEnabled
+            : existingShop.settings.smsNotificationsEnabled,
+        nextJobNumber: existingShop.settings.nextJobNumber || 1001,
+      };
+    }
+
+    await existingShop.save();
+
+    // Also update owner User name & phone if provided
+    if (ownerName || cleanPhone) {
+      await User.findByIdAndUpdate(req.user!.userId, {
+        ...(ownerName && { name: ownerName.trim() }),
+        ...(cleanPhone && { phone: cleanPhone }),
+      });
+    }
+
+    res.json({ success: true, shop: existingShop });
   },
 
   async getStaff(req: AuthRequest, res: Response): Promise<void> {

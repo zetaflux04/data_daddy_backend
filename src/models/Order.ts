@@ -14,6 +14,13 @@ export interface ISmsLog {
   sentAt: Date;
 }
 
+export interface IWarranty {
+  hasWarranty: boolean;
+  period?: number;
+  unit?: 'days' | 'months' | 'years';
+  expiresAt?: Date;
+}
+
 export interface IOrder {
   shopId: Types.ObjectId;
   jobId: string; // e.g. "JOB-1001"
@@ -36,6 +43,7 @@ export interface IOrder {
     advancePaid: number;
     due: number;
   };
+  warranty?: IWarranty;
   payments: IPayment[];
   smsLogs: ISmsLog[];
   dates: {
@@ -73,6 +81,16 @@ const SmsLogSubSchema = new Schema<ISmsLog>(
   { _id: false }
 );
 
+const WarrantySubSchema = new Schema<IWarranty>(
+  {
+    hasWarranty: { type: Boolean, default: false },
+    period: { type: Number },
+    unit: { type: String, enum: ['days', 'months', 'years'] },
+    expiresAt: { type: Date },
+  },
+  { _id: false }
+);
+
 const OrderSchema = new Schema<IOrder>(
   {
     shopId: { type: Schema.Types.ObjectId, ref: 'Shop', required: true, index: true },
@@ -105,6 +123,7 @@ const OrderSchema = new Schema<IOrder>(
       advancePaid: { type: Number, default: 0 },
       due: { type: Number, default: 0 },
     },
+    warranty: { type: WarrantySubSchema },
     payments: [PaymentSubSchema],
     smsLogs: [SmsLogSubSchema],
     dates: {

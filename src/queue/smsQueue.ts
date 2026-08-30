@@ -22,6 +22,8 @@ try {
       host: config.redis.host,
       port: config.redis.port,
       password: config.redis.password,
+      maxRetriesPerRequest: null,
+      retryStrategy: () => null,
     },
     defaultJobOptions: {
       attempts: 3,
@@ -32,26 +34,21 @@ try {
       removeOnComplete: true,
     },
   });
+
+  smsQueue.on('error', () => {
+    // Suppress unhandled redis connection errors for bullmq queue when offline
+  });
 } catch {
   smsQueue = null;
 }
 
 export const enqueueSmsNotification = async (data: SmsJobData): Promise<void> => {
-  try {
-    if (smsQueue) {
-      await smsQueue.add('send-job-sms', data);
-      return;
-    }
-  } catch {
-    // Redis offline or queue error, fall through to direct async dispatch
-  }
-
-  // Fallback: direct asynchronous execution
+  // Direct asynchronous execution fallback
   setImmediate(async () => {
     try {
       await processSmsJob(data);
     } catch (err) {
-      console.error('Async SMS fallback execution error:', err);
+      console.error('Async SMS execution error:', err);
     }
   });
 };

@@ -64,8 +64,11 @@ export const orderController = {
       return;
     }
 
-    // Generate atomic sequential Job ID e.g., "JOB-1001"
-    const nextNum = shop.settings.nextJobNumber || 1001;
+    // Generate atomic unique sequential Job ID e.g., "JOB-1001"
+    let nextNum = shop.settings.nextJobNumber || 1001;
+    while (await Order.exists({ shopId, jobId: `JOB-${nextNum}` })) {
+      nextNum += 1;
+    }
     const jobId = `JOB-${nextNum}`;
     shop.settings.nextJobNumber = nextNum + 1;
     await shop.save();
@@ -207,7 +210,7 @@ export const orderController = {
    */
   async updateStatus(req: AuthRequest, res: Response): Promise<void> {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, serialOrImei, warranty } = req.body;
 
     const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'canceled'];
     if (!validStatuses.includes(status)) {
@@ -223,6 +226,36 @@ export const orderController = {
 
     const prevStatus = order.status;
     order.status = status;
+
+    if (serialOrImei !== undefined && serialOrImei !== null) {
+      order.serialOrImei = String(serialOrImei).trim();
+    }
+
+    if (warranty) {
+      let expiresAt: Date | undefined = undefined;
+      const hasWarranty = !!warranty.hasWarranty;
+      const period = warranty.period ? Number(warranty.period) : undefined;
+      const unit = warranty.unit as 'days' | 'months' | 'years' | undefined;
+
+      if (hasWarranty && period && period > 0 && unit) {
+        const d = new Date();
+        if (unit === 'days') {
+          d.setDate(d.getDate() + period);
+        } else if (unit === 'months') {
+          d.setMonth(d.getMonth() + period);
+        } else if (unit === 'years') {
+          d.setFullYear(d.getFullYear() + period);
+        }
+        expiresAt = d;
+      }
+
+      order.warranty = {
+        hasWarranty,
+        period,
+        unit,
+        expiresAt,
+      };
+    }
 
     if (status === 'delivered') {
       order.dates.deliveredAt = new Date();
