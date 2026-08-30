@@ -2,9 +2,11 @@ import app from './app';
 import { config } from './config/env';
 import { connectDB } from './config/db';
 import { getRedisClient } from './config/redis';
+import { seedTestUser } from './config/seed';
 
 const startServer = async () => {
   await connectDB();
+  await seedTestUser();
   getRedisClient();
 
   app.listen(config.port, () => {

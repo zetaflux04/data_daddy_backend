@@ -25,11 +25,21 @@ export const authController = {
       return;
     }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Handle test user 9876543210
+    const isTestNumber = cleanPhone === '9876543210';
+    const otp = isTestNumber ? '123456' : Math.floor(100000 + Math.random() * 900000).toString();
 
     // Cache in Redis / memory for 5 minutes (300 seconds)
     await cacheService.set(`otp:${cleanPhone}`, otp, 300);
+
+    if (isTestNumber) {
+      res.json({
+        success: true,
+        message: 'OTP sent successfully (Test User Code: 123456)',
+        devOtp: '123456',
+      });
+      return;
+    }
 
     // Send via Fast2SMS
     const result = await fast2smsService.sendOtp(cleanPhone, otp);
@@ -37,7 +47,6 @@ export const authController = {
     res.json({
       success: result.success,
       message: result.message,
-      // For local testing convenience if in mock mode
       ...(config.fast2sms.apiKey === 'mock' ? { devOtp: otp } : {}),
     });
   },
@@ -57,8 +66,9 @@ export const authController = {
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     const cachedOtp = await cacheService.get(`otp:${cleanPhone}`);
 
-    // Allow static master OTP '123456' for rapid dev/demo if in mock mode
-    const isValid = (config.fast2sms.apiKey === 'mock' && otp === '123456') || (cachedOtp && cachedOtp === otp);
+    // Allow test user 9876543210 with static OTP 123456, or mock mode, or valid cached OTP
+    const isTestAuth = cleanPhone === '9876543210' && otp === '123456';
+    const isValid = isTestAuth || (config.fast2sms.apiKey === 'mock' && otp === '123456') || (cachedOtp && cachedOtp === otp);
 
     if (!isValid) {
       res.status(400).json({ success: false, message: 'Invalid or expired OTP. Please request a new one.' });
@@ -66,7 +76,9 @@ export const authController = {
     }
 
     // Consume OTP
-    await cacheService.del(`otp:${cleanPhone}`);
+    if (cachedOtp) {
+      await cacheService.del(`otp:${cleanPhone}`);
+    }
 
     // Check if user exists
     let user = await User.findOne({ phone: cleanPhone });
@@ -74,6 +86,37 @@ export const authController = {
 
     if (user) {
       shop = await Shop.findById(user.shopId);
+    }
+
+    // Auto-create test user and shop if not already present
+    if (isTestAuth && (!user || !shop)) {
+      if (!shop) {
+        shop = await Shop.create({
+          name: 'OK-Repair Solutions',
+          ownerName: 'Sunil Verma',
+          phone: '9876543210',
+          address: { street: 'Shop #14, Main Market', city: 'Jaipur', state: 'Rajasthan', pincode: '302001' },
+          subscription: {
+            plan: 'pro',
+            status: 'active',
+          },
+          settings: {
+            currency: 'INR',
+            smsNotificationsEnabled: true,
+            nextJobNumber: 1001,
+          },
+        });
+      }
+
+      if (!user) {
+        user = await User.create({
+          shopId: shop._id,
+          name: 'Sunil Verma',
+          phone: '9876543210',
+          role: 'owner',
+          isActive: true,
+        });
+      }
     }
 
     // If user or shop doesn't exist yet, return needsRegistration flag
