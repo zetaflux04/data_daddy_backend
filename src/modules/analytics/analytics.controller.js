@@ -64,6 +64,100 @@ const analyticsController = {
       createdAt: { $gte: startOfToday },
     });
 
+    // 5. Live Weekly Revenue Breakdown (Mon to Sun of current week)
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const now7 = new Date();
+    const currentDayOfWeek = now7.getDay(); // 0 is Sun, 1 is Mon...
+    const mondayDiff = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    
+    const startOfWeek = new Date(now7.getFullYear(), now7.getMonth(), now7.getDate() + mondayDiff, 0, 0, 0, 0);
+    const startOfLastWeek = new Date(startOfWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const endOfLastWeek = new Date(startOfWeek.getTime() - 1);
+
+    // Aggregate payments received this week
+    const thisWeekPayments = await Order.aggregate([
+      { $match: { shopId } },
+      { $unwind: '$payments' },
+      {
+        $match: {
+          'payments.paidAt': { $gte: startOfWeek },
+        },
+      },
+      {
+        $group: {
+          _id: { $dayOfWeek: '$payments.paidAt' }, // 1 = Sun, 2 = Mon, 3 = Tue...
+          totalAmount: { $sum: '$payments.amount' },
+        },
+      },
+    ]);
+
+    // Aggregate payments received last week for live comparison
+    const lastWeekPayments = await Order.aggregate([
+      { $match: { shopId } },
+      { $unwind: '$payments' },
+      {
+        $match: {
+          'payments.paidAt': { $gte: startOfLastWeek, $lte: endOfLastWeek },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: '$payments.amount' },
+        },
+      },
+    ]);
+
+    const dayNumberToDayName = { 1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fri', 7: 'Sat' };
+    const dailyMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+    let thisWeekTotalRevenue = 0;
+
+    thisWeekPayments.forEach((item) => {
+      const dName = dayNumberToDayName[item._id];
+      if (dName && dName in dailyMap) {
+        dailyMap[dName] = item.totalAmount || 0;
+        thisWeekTotalRevenue += item.totalAmount || 0;
+      }
+    });
+
+    // Fallback: If no payments array records yet, aggregate by Order.createdAt for this week
+    if (thisWeekTotalRevenue === 0 && orderFinance.totalRevenueCollected > 0) {
+      const thisWeekOrders = await Order.find({
+        shopId,
+        createdAt: { $gte: startOfWeek },
+      });
+      thisWeekOrders.forEach((ord) => {
+        const dName = dayNames[new Date(ord.createdAt).getDay()];
+        const amt = ord.cost?.advancePaid || 0;
+        if (dName in dailyMap) {
+          dailyMap[dName] += amt;
+          thisWeekTotalRevenue += amt;
+        }
+      });
+    }
+
+    const lastWeekTotal = lastWeekPayments[0]?.totalAmount || 0;
+    let revenueGrowthPct = 0;
+    if (lastWeekTotal > 0) {
+      revenueGrowthPct = Math.round(((thisWeekTotalRevenue - lastWeekTotal) / lastWeekTotal) * 100 * 10) / 10;
+    } else if (thisWeekTotalRevenue > 0) {
+      revenueGrowthPct = 100;
+    }
+
+    const weeklyData = [
+      { day: 'Mon', amount: dailyMap['Mon'] },
+      { day: 'Tue', amount: dailyMap['Tue'] },
+      { day: 'Wed', amount: dailyMap['Wed'] },
+      { day: 'Thu', amount: dailyMap['Thu'] },
+      { day: 'Fri', amount: dailyMap['Fri'] },
+      { day: 'Sat', amount: dailyMap['Sat'] },
+      { day: 'Sun', amount: dailyMap['Sun'] },
+    ];
+
+    const totalJobsCount = statusMap.pending + statusMap.in_progress + statusMap.parts_delayed + statusMap.repaired + statusMap.delivered;
+    const inProgressSum = statusMap.in_progress + statusMap.parts_delayed;
+    const calcPct = (cnt) => (totalJobsCount > 0 ? Math.round((cnt / totalJobsCount) * 100) : 0);
+
     res.json({
       success: true,
       data: {
@@ -74,12 +168,24 @@ const analyticsController = {
           readyForPickup: statusMap.repaired,
           delivered: statusMap.delivered,
           todayNew: todayOrdersCount,
+          total: totalJobsCount,
         },
         financials: {
           totalRevenue: orderFinance.totalRevenueCollected,
           totalExpense,
           netProfit,
           totalDuesPending: orderFinance.totalDuesPending,
+          thisWeekRevenue: thisWeekTotalRevenue,
+          revenueGrowthPct,
+        },
+        charts: {
+          weeklyRevenue: weeklyData,
+          statusDistribution: [
+            { label: 'Pending', key: 'pending', count: statusMap.pending, percentage: calcPct(statusMap.pending), color: '#F97316' },
+            { label: 'In Progress', key: 'in_progress', count: inProgressSum, percentage: calcPct(inProgressSum), color: '#3B82F6' },
+            { label: 'Ready', key: 'ready', count: statusMap.repaired, percentage: calcPct(statusMap.repaired), color: '#10B981' },
+            { label: 'Delivered', key: 'delivered', count: statusMap.delivered, percentage: calcPct(statusMap.delivered), color: '#8B5CF6' },
+          ],
         },
       },
     });

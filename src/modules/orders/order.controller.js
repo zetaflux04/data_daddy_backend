@@ -195,7 +195,7 @@ const orderController = {
    * GET /api/orders?status=pending&search=...
    */
   async list(req, res) {
-    const { status, search, orderType, limit = 50, page = 1 } = req.query;
+    const { status, search, orderType, dateRange, startDate, endDate, from, to, limit = 50, page = 1 } = req.query;
     const shopId = req.user.shopId;
     const filter = { shopId };
 
@@ -205,6 +205,47 @@ const orderController = {
 
     if (orderType && typeof orderType === 'string' && orderType !== 'all') {
       filter.orderType = orderType;
+    }
+
+    // Date range filtering
+    const now = new Date();
+    let dateFilterStart = null;
+    let dateFilterEnd = null;
+
+    if (dateRange === 'today') {
+      dateFilterStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      dateFilterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    } else if (dateRange === 'week') {
+      // Start of current week (Monday)
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      dateFilterStart = new Date(now.setDate(diff));
+      dateFilterStart.setHours(0, 0, 0, 0);
+      dateFilterEnd = new Date();
+      dateFilterEnd.setHours(23, 59, 59, 999);
+    } else if (dateRange === 'month') {
+      dateFilterStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      dateFilterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (dateRange === 'year') {
+      dateFilterStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      dateFilterEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    } else if (dateRange === 'custom' || startDate || from) {
+      const s = startDate || from;
+      const e = endDate || to;
+      if (s) {
+        dateFilterStart = new Date(s);
+        dateFilterStart.setHours(0, 0, 0, 0);
+      }
+      if (e) {
+        dateFilterEnd = new Date(e);
+        dateFilterEnd.setHours(23, 59, 59, 999);
+      }
+    }
+
+    if (dateFilterStart || dateFilterEnd) {
+      filter.createdAt = {};
+      if (dateFilterStart) filter.createdAt.$gte = dateFilterStart;
+      if (dateFilterEnd) filter.createdAt.$lte = dateFilterEnd;
     }
 
     if (search && typeof search === 'string') {
