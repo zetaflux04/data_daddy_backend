@@ -16,7 +16,17 @@ const uploadRoutes = require('./modules/uploads/upload.routes');
 
 const app = express();
 
-app.use(cors());
+// Comprehensive CORS setup
+app.use(
+  cors({
+    origin: true, // Reflect request origin (supports localhost:5173, localhost:3000, mobile, etc.)
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  })
+);
+app.options('*', cors());
+
 app.use(express.json());
 
 // Health Check
