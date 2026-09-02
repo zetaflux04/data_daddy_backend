@@ -535,7 +535,7 @@ const adminController = {
    */
   async getOrders(req, res) {
     try {
-      const { shopId, status, deviceType, search, limit = 50, page = 1 } = req.query;
+      const { shopId, status, deviceType, orderType, search, limit = 50, page = 1 } = req.query;
       const filter = {};
 
       if (shopId && shopId !== 'all') {
@@ -547,12 +547,16 @@ const adminController = {
       if (deviceType && deviceType !== 'all') {
         filter.deviceType = deviceType;
       }
+      if (orderType && orderType !== 'all') {
+        filter.orderType = orderType;
+      }
       if (search && typeof search === 'string') {
         const regex = { $regex: search.trim(), $options: 'i' };
         filter.$or = [
           { jobId: regex },
           { brand: regex },
           { model: regex },
+          { productName: regex },
           { 'customerSnapshot.name': regex },
           { 'customerSnapshot.phone': regex },
           { problemDescription: regex }, // Customer issue search!
@@ -858,6 +862,9 @@ const adminController = {
         status,
         cost,
         assignedTechnicianId,
+        productName,
+        productPrice,
+        photos,
       } = req.body;
 
       const order = await Order.findById(id);
@@ -866,12 +873,19 @@ const adminController = {
         return;
       }
 
+      // Repair-specific fields
       if (brand) order.brand = brand.trim();
       if (model) order.model = model.trim();
       if (problemDescription) order.problemDescription = problemDescription.trim();
       if (deviceType) order.deviceType = deviceType;
       if (serialOrImei !== undefined) order.serialOrImei = serialOrImei?.trim();
       if (passcodePattern !== undefined) order.passcodePattern = passcodePattern?.trim();
+      if (photos !== undefined && Array.isArray(photos)) order.photos = photos.slice(0, 5);
+
+      // Accessory-specific fields
+      if (productName !== undefined) order.productName = productName?.trim();
+      if (productPrice !== undefined) order.productPrice = Number(productPrice);
+
       if (status) order.status = status;
       if (assignedTechnicianId !== undefined) {
         order.assignedTechnicianId = assignedTechnicianId ? new mongoose.Types.ObjectId(assignedTechnicianId) : undefined;

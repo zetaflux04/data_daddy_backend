@@ -14,12 +14,19 @@ const orderController = {
       customerId,
       customerName,
       customerPhone,
+      orderType = 'repair',
+      // Repair fields
       deviceType,
       brand,
       model,
       serialOrImei,
       passcodePattern,
       problemDescription,
+      photos,
+      // Accessory fields
+      productName,
+      productPrice,
+      // Common fields
       estimatedCost = 0,
       advancePaid = 0,
       paymentMode = 'cash',
@@ -27,9 +34,18 @@ const orderController = {
       promisedDeliveryAt,
     } = req.body;
 
-    if (!brand || !model || !problemDescription) {
-      res.status(400).json({ success: false, message: 'Brand, Model, and Problem Description are required' });
-      return;
+    // Validate based on order type
+    if (orderType === 'accessory') {
+      if (!productName || !productName.trim()) {
+        res.status(400).json({ success: false, message: 'Product name is required for accessory orders' });
+        return;
+      }
+    } else {
+      // Repair order validation
+      if (!brand || !model || !problemDescription) {
+        res.status(400).json({ success: false, message: 'Brand, Model, and Problem Description are required' });
+        return;
+      }
     }
 
     const shopId = req.user.shopId;
@@ -76,20 +92,37 @@ const orderController = {
     await resolvedCustomer.save();
 
     // Cost calculations
-    const finalCost = Number(estimatedCost);
-    const advance = Number(advancePaid);
-    const due = Math.max(0, finalCost - advance);
-
+    let finalCost = 0;
+    let advance = 0;
+    let due = 0;
     const payments = [];
-    if (advance > 0) {
-      payments.push({
-        amount: advance,
-        mode: paymentMode || 'cash',
-        paidAt: new Date(),
-      });
+
+    if (orderType === 'accessory') {
+      finalCost = Number(productPrice || 0);
+      advance = finalCost; // Accessories are 100% paid immediately upon sale
+      due = 0;
+      if (finalCost > 0) {
+        payments.push({
+          amount: finalCost,
+          mode: paymentMode || 'cash',
+          paidAt: new Date(),
+        });
+      }
+    } else {
+      finalCost = Number(estimatedCost);
+      advance = Number(advancePaid);
+      due = Math.max(0, finalCost - advance);
+      if (advance > 0) {
+        payments.push({
+          amount: advance,
+          mode: paymentMode || 'cash',
+          paidAt: new Date(),
+        });
+      }
     }
 
-    const order = await Order.create({
+    // Build order data
+    const orderData = {
       shopId,
       jobId,
       customerId: resolvedCustomer._id,
@@ -97,14 +130,8 @@ const orderController = {
         name: resolvedCustomer.name,
         phone: resolvedCustomer.phone,
       },
-      deviceType: deviceType || 'mobile',
-      brand: brand.trim(),
-      model: model.trim(),
-      serialOrImei: serialOrImei?.trim(),
-      passcodePattern: passcodePattern?.trim(),
-      problemDescription: problemDescription.trim(),
-      status: 'pending',
-      assignedTechnicianId: assignedTechnicianId || undefined,
+      orderType,
+      status: orderType === 'accessory' ? 'delivered' : 'pending',
       cost: {
         estimated: finalCost,
         final: finalCost,
@@ -116,16 +143,39 @@ const orderController = {
       dates: {
         receivedAt: new Date(),
         promisedDeliveryAt: promisedDeliveryAt ? new Date(promisedDeliveryAt) : undefined,
+        deliveredAt: orderType === 'accessory' ? new Date() : undefined,
       },
       invoice: {
         invoiceNumber: `INV-${jobId}`,
         issuedAt: new Date(),
       },
       createdBy: req.user.userId,
-    });
+    };
 
-    // Enqueue "Order Received" SMS notification via Fast2SMS
-    if (shop.settings.smsNotificationsEnabled) {
+    // Add type-specific fields
+    if (orderType === 'accessory') {
+      orderData.productName = productName.trim();
+      orderData.productPrice = Number(productPrice || 0);
+    } else {
+      orderData.deviceType = deviceType || 'mobile';
+      orderData.brand = brand.trim();
+      orderData.model = model.trim();
+      orderData.serialOrImei = serialOrImei?.trim();
+      orderData.passcodePattern = passcodePattern?.trim();
+      orderData.problemDescription = problemDescription.trim();
+      orderData.assignedTechnicianId = assignedTechnicianId || undefined;
+      // Handle photos (array of up to 5 image URLs or S3 keys)
+      if (Array.isArray(photos)) {
+        orderData.photos = photos.slice(0, 5).filter(Boolean);
+      } else if (photos && typeof photos === 'string') {
+        orderData.photos = [photos];
+      }
+    }
+
+    const order = await Order.create(orderData);
+
+    // Enqueue "Order Received" SMS notification via Fast2SMS (only for repairs)
+    if (orderType === 'repair' && shop.settings.smsNotificationsEnabled) {
       await enqueueSmsNotification({
         orderId: order._id.toString(),
         phone: resolvedCustomer.phone,
@@ -145,12 +195,16 @@ const orderController = {
    * GET /api/orders?status=pending&search=...
    */
   async list(req, res) {
-    const { status, search, limit = 50, page = 1 } = req.query;
+    const { status, search, orderType, limit = 50, page = 1 } = req.query;
     const shopId = req.user.shopId;
     const filter = { shopId };
 
     if (status && typeof status === 'string' && status !== 'all') {
       filter.status = status;
+    }
+
+    if (orderType && typeof orderType === 'string' && orderType !== 'all') {
+      filter.orderType = orderType;
     }
 
     if (search && typeof search === 'string') {
@@ -159,6 +213,7 @@ const orderController = {
         { jobId: regex },
         { brand: regex },
         { model: regex },
+        { productName: regex },
         { 'customerSnapshot.name': regex },
         { 'customerSnapshot.phone': regex },
       ];

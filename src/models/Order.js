@@ -40,16 +40,27 @@ const OrderSchema = new Schema(
       name: { type: String, required: true },
       phone: { type: String, required: true },
     },
+    orderType: {
+      type: String,
+      enum: ['repair', 'accessory'],
+      default: 'repair',
+      index: true,
+    },
+    // Repair-specific fields
     deviceType: {
       type: String,
       enum: ['mobile', 'laptop', 'tablet', 'smartwatch', 'other'],
       default: 'mobile',
     },
-    brand: { type: String, required: true, trim: true },
-    model: { type: String, required: true, trim: true },
+    brand: { type: String, trim: true },
+    model: { type: String, trim: true },
     serialOrImei: { type: String, trim: true },
     passcodePattern: { type: String },
-    problemDescription: { type: String, required: true, trim: true },
+    problemDescription: { type: String, trim: true },
+    photos: [{ type: String }],
+    // Accessory-specific fields
+    productName: { type: String, trim: true },
+    productPrice: { type: Number },
     status: {
       type: String,
       enum: ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'canceled'],
