@@ -12,7 +12,7 @@ const shopController = {
   },
 
   async updateProfile(req, res) {
-    const { name, ownerName, phone, address, settings } = req.body;
+    const { name, ownerName, phone, address, settings, logoUrl } = req.body;
 
     const existingShop = await Shop.findById(req.user.shopId);
     if (!existingShop) {
@@ -31,6 +31,7 @@ const shopController = {
     if (ownerName) existingShop.ownerName = ownerName.trim();
     if (cleanPhone) existingShop.phone = cleanPhone;
     if (formattedAddress !== undefined) existingShop.address = formattedAddress;
+    if (logoUrl !== undefined) existingShop.logoUrl = logoUrl;
     if (settings) {
       existingShop.settings = {
         currency: settings.currency || existingShop.settings.currency || 'INR',
@@ -44,11 +45,12 @@ const shopController = {
 
     await existingShop.save();
 
-    // Also update owner User name & phone if provided
-    if (ownerName || cleanPhone) {
+    // Also update owner User name & phone & avatarUrl if provided
+    if (ownerName || cleanPhone || logoUrl) {
       await User.findByIdAndUpdate(req.user.userId, {
         ...(ownerName && { name: ownerName.trim() }),
         ...(cleanPhone && { phone: cleanPhone }),
+        ...(logoUrl && { avatarUrl: logoUrl }),
       });
     }
 

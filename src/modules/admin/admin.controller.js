@@ -272,6 +272,7 @@ const adminController = {
         ownerName: ownerName.trim(),
         phone: cleanPhone,
         address: address || {},
+        logoUrl: req.body.logoUrl || undefined,
         subscription: {
           plan: plan === 'pro' ? 'pro' : 'free',
           status: 'active',
@@ -288,6 +289,7 @@ const adminController = {
         name: ownerName.trim(),
         phone: cleanPhone,
         role: 'owner',
+        avatarUrl: req.body.logoUrl || undefined,
         isActive: true,
       });
 
@@ -304,7 +306,7 @@ const adminController = {
   async updateShop(req, res) {
     try {
       const { id } = req.params;
-      const { name, ownerName, phone, address, settings } = req.body;
+      const { name, ownerName, phone, address, settings, logoUrl } = req.body;
       const shop = await Shop.findByIdAndUpdate(
         id,
         {
@@ -314,6 +316,7 @@ const adminController = {
             ...(phone && { phone: phone.trim() }),
             ...(address && { address }),
             ...(settings && { settings }),
+            ...(logoUrl !== undefined && { logoUrl }),
           },
         },
         { new: true }

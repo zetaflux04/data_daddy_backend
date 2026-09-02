@@ -1,7 +1,7 @@
 const { RepairGuide } = require('../../models/RepairGuide');
 const { Shop } = require('../../models/Shop');
-// Cloudinary integration (Replaced AWS S3 - AWS temporarily commented out)
-const { getPresignedDownloadUrl } = require('../../config/cloudinary');
+// AWS S3 Media Integration
+const { getPresignedDownloadUrl } = require('../../config/s3');
 
 const guideController = {
   async list(req, res) {

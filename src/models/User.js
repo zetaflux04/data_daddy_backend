@@ -7,6 +7,7 @@ const UserSchema = new Schema(
     name: { type: String, required: true, trim: true },
     phone: { type: String, required: true, trim: true, index: true },
     role: { type: String, enum: ['owner', 'technician', 'staff'], default: 'owner' },
+    avatarUrl: { type: String },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

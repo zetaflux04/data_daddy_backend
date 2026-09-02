@@ -23,8 +23,6 @@ const RepairGuideSchema = new Schema(
     ],
     videoS3Key: { type: String },
     schematicPdfS3Key: { type: String },
-    videoCloudinaryId: { type: String },
-    schematicCloudinaryId: { type: String },
     difficulty: { type: String, enum: ['easy', 'medium', 'hard', 'expert'], default: 'medium' },
     isPremium: { type: Boolean, default: true },
   },
