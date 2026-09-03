@@ -111,7 +111,7 @@ const orderController = {
     } else {
       finalCost = Number(estimatedCost);
       advance = Number(advancePaid);
-      if (advance > finalCost && finalCost > 0) {
+      if (advance > finalCost) {
         res.status(400).json({ success: false, message: 'Advance payment cannot exceed the estimated price' });
         return;
       }
@@ -308,7 +308,7 @@ const orderController = {
    */
   async updateStatus(req, res) {
     const { id } = req.params;
-    const { status, serialOrImei, warranty } = req.body;
+    const { status, serialOrImei, warranty, repairedBy, assignedTechnicianId } = req.body;
 
     const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'canceled'];
     if (!validStatuses.includes(status)) {
@@ -359,7 +359,23 @@ const orderController = {
       order.dates.deliveredAt = new Date();
     }
 
+    if (repairedBy) {
+      const techId = repairedBy.id || repairedBy.userId;
+      const isValidId = techId && mongoose.Types.ObjectId.isValid(techId);
+      order.repairedBy = {
+        userId: isValidId ? techId : undefined,
+        name: repairedBy.name,
+        role: repairedBy.role || 'technician',
+      };
+      if (isValidId) {
+        order.assignedTechnicianId = techId;
+      }
+    } else if (assignedTechnicianId && mongoose.Types.ObjectId.isValid(assignedTechnicianId)) {
+      order.assignedTechnicianId = assignedTechnicianId;
+    }
+
     await order.save();
+    await order.populate('assignedTechnicianId', 'name phone');
 
     // Trigger status SMS if enabled
     const shop = await Shop.findById(req.user.shopId);
@@ -412,12 +428,13 @@ const orderController = {
       return;
     }
 
+    const estimatePrice = order.cost?.final || order.cost?.estimated || 0;
     const currentPaid = (order.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
-    const maxPayable = Math.max(0, (order.cost?.final || 0) - currentPaid);
-    if (payAmount > maxPayable) {
+    const maxPayable = Math.max(0, estimatePrice - currentPaid);
+    if (payAmount > maxPayable || (currentPaid + payAmount) > estimatePrice) {
       res.status(400).json({
         success: false,
-        message: `Payment amount (₹${payAmount}) cannot exceed the remaining balance of ₹${maxPayable} (Estimate Price: ₹${order.cost?.final || 0}).`,
+        message: `Payment amount (₹${payAmount}) cannot exceed the remaining balance of ₹${maxPayable} (Estimate Price: ₹${estimatePrice}).`,
       });
       return;
     }
@@ -435,6 +452,7 @@ const orderController = {
     order.cost.due = Math.max(0, order.cost.final - totalPaid);
 
     await order.save();
+    await order.populate('assignedTechnicianId', 'name phone');
 
     res.json({ success: true, order });
   },

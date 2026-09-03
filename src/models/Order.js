@@ -68,6 +68,11 @@ const OrderSchema = new Schema(
       index: true,
     },
     assignedTechnicianId: { type: Schema.Types.ObjectId, ref: 'User' },
+    repairedBy: {
+      userId: { type: Schema.Types.ObjectId, ref: 'User' },
+      name: { type: String, trim: true },
+      role: { type: String, trim: true },
+    },
     cost: {
       estimated: { type: Number, default: 0 },
       final: { type: Number, default: 0 },
