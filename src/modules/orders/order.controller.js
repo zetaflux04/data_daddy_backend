@@ -111,6 +111,10 @@ const orderController = {
     } else {
       finalCost = Number(estimatedCost);
       advance = Number(advancePaid);
+      if (advance > finalCost && finalCost > 0) {
+        res.status(400).json({ success: false, message: 'Advance payment cannot exceed the estimated price' });
+        return;
+      }
       due = Math.max(0, finalCost - advance);
       if (advance > 0) {
         payments.push({
@@ -405,6 +409,16 @@ const orderController = {
     const order = await Order.findOne({ _id: id, shopId: req.user.shopId });
     if (!order) {
       res.status(404).json({ success: false, message: 'Order not found' });
+      return;
+    }
+
+    const currentPaid = (order.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+    const maxPayable = Math.max(0, (order.cost?.final || 0) - currentPaid);
+    if (payAmount > maxPayable) {
+      res.status(400).json({
+        success: false,
+        message: `Payment amount (₹${payAmount}) cannot exceed the remaining balance of ₹${maxPayable} (Estimate Price: ₹${order.cost?.final || 0}).`,
+      });
       return;
     }
 

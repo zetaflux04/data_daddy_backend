@@ -107,6 +107,7 @@ const uploadBufferToS3 = async (buffer, key, contentType = 'image/jpeg') => {
       Key: cleanKey,
       Body: buffer,
       ContentType: contentType,
+      ACL: 'public-read', // Make object publicly accessible via direct S3 URL
     });
 
     await s3Client.send(command);
