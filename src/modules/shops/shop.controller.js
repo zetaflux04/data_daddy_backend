@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { Shop } = require('../../models/Shop');
 const { User } = require('../../models/User');
 
@@ -85,6 +86,30 @@ const shopController = {
     });
 
     res.status(201).json({ success: true, staff: newStaff });
+  },
+
+  async deleteStaff(req, res) {
+    try {
+      const { id } = req.params;
+      if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: 'Valid Technician ID is required' });
+      }
+
+      const target = await User.findOne({ _id: id, shopId: req.user.shopId });
+      if (!target) {
+        return res.status(404).json({ success: false, message: 'Technician not found' });
+      }
+
+      if (target.role === 'owner') {
+        return res.status(403).json({ success: false, message: 'Shop owner cannot be deleted' });
+      }
+
+      await User.deleteOne({ _id: id, shopId: req.user.shopId });
+      res.json({ success: true, message: 'Technician deleted successfully' });
+    } catch (err) {
+      console.error('Delete technician error:', err);
+      res.status(500).json({ success: false, message: err.message || 'Failed to delete technician' });
+    }
   },
 };
 

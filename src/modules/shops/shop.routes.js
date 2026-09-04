@@ -10,5 +10,6 @@ router.get('/profile', shopController.getProfile);
 router.patch('/profile', requireRole(['owner']), shopController.updateProfile);
 router.get('/staff', shopController.getStaff);
 router.post('/staff', requireRole(['owner']), shopController.addStaff);
+router.delete('/staff/:id', requireRole(['owner']), shopController.deleteStaff);
 
 module.exports = router;

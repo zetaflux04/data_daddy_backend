@@ -302,6 +302,37 @@ const orderController = {
   },
 
   /**
+   * Get Public Invoice (No auth required, for customer scanning QR code)
+   * GET /api/orders/public/:id
+   */
+  async getPublicInvoice(req, res) {
+    try {
+      const id = req.params.id;
+      const filter = {};
+
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        filter._id = id;
+      } else {
+        filter.$or = [{ jobId: id }, { 'invoice.invoiceNumber': id }];
+      }
+
+      const order = await Order.findOne(filter)
+        .populate('shopId', 'name phone email address gstin logo ownerName')
+        .populate('assignedTechnicianId', 'name phone')
+        .populate('customerId', 'name phone email address');
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Invoice not found' });
+        return;
+      }
+
+      res.json({ success: true, order });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  /**
    * Update Status (triggers Fast2SMS where applicable)
    * PATCH /api/orders/:id/status
    * Body: { status: "repaired" | "delivered" | ... }

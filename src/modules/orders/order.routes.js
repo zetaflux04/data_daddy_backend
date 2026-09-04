@@ -4,6 +4,9 @@ const { authenticateJwt } = require('../../middlewares/auth');
 
 const router = Router();
 
+// Public route for customer scanning invoice QR code
+router.get('/public/:id', orderController.getPublicInvoice);
+
 router.use(authenticateJwt);
 
 router.post('/', orderController.create);
