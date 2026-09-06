@@ -107,7 +107,6 @@ const uploadBufferToS3 = async (buffer, key, contentType = 'image/jpeg') => {
       Key: cleanKey,
       Body: buffer,
       ContentType: contentType,
-      ACL: 'public-read', // Make object publicly accessible via direct S3 URL
     });
 
     await s3Client.send(command);
@@ -119,14 +118,7 @@ const uploadBufferToS3 = async (buffer, key, contentType = 'image/jpeg') => {
     };
   } catch (error) {
     console.error('[AWS S3] Upload buffer error:', error.message);
-    // If S3 bucket not reachable or credentials mock, fallback gracefully to URL format
-    const fallbackUrl = getS3PublicUrl(cleanKey);
-    return {
-      success: true,
-      key: cleanKey,
-      url: fallbackUrl,
-      warning: error.message,
-    };
+    throw error;
   }
 };
 
