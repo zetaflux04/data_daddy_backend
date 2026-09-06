@@ -101,8 +101,13 @@ const customerController = {
       return;
     }
 
-    const orders = await Order.find({ shopId: req.user.shopId, customerId: customer._id })
-      .sort({ createdAt: -1 });
+    const orders = await Order.find({
+      shopId: req.user.shopId,
+      $or: [
+        { customerId: customer._id },
+        { 'customerSnapshot.phone': customer.phone },
+      ],
+    }).sort({ createdAt: -1 });
 
     res.json({ success: true, customer, orders });
   },

@@ -199,9 +199,13 @@ const orderController = {
    * GET /api/orders?status=pending&search=...
    */
   async list(req, res) {
-    const { status, search, orderType, dateRange, startDate, endDate, from, to, limit = 50, page = 1 } = req.query;
+    const { customerId, status, search, orderType, dateRange, startDate, endDate, from, to, limit = 50, page = 1 } = req.query;
     const shopId = req.user.shopId;
     const filter = { shopId };
+
+    if (customerId) {
+      filter.customerId = customerId;
+    }
 
     if (status && typeof status === 'string' && status !== 'all') {
       filter.status = status;
