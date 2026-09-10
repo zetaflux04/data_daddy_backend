@@ -616,7 +616,7 @@ const adminController = {
       const { id } = req.params;
       const { status } = req.body;
 
-      const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'canceled'];
+      const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'unrepairable', 'canceled'];
       if (!validStatuses.includes(status)) {
         res.status(400).json({ success: false, message: 'Invalid status' });
         return;

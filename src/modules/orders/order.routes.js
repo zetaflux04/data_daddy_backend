@@ -12,6 +12,7 @@ router.use(authenticateJwt);
 router.post('/', orderController.create);
 router.get('/', orderController.list);
 router.get('/:id', orderController.getOne);
+router.put('/:id', orderController.update);
 router.patch('/:id/status', orderController.updateStatus);
 router.post('/:id/payments', orderController.addPayment);
 

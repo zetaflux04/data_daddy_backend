@@ -78,14 +78,25 @@ const orderController = {
       return;
     }
 
-    // Generate atomic unique sequential Job ID e.g., "JOB-1001"
-    let nextNum = shop.settings.nextJobNumber || 1001;
-    while (await Order.exists({ shopId, jobId: `JOB-${nextNum}` })) {
-      nextNum += 1;
+    // Generate atomic unique sequential Job/Sale ID: ACC- for accessory, JOB- for repair
+    let jobId;
+    if (orderType === 'accessory') {
+      let nextNum = shop.settings.nextAccessoryNumber || 1001;
+      while (await Order.exists({ shopId, jobId: `ACC-${nextNum}` })) {
+        nextNum += 1;
+      }
+      jobId = `ACC-${nextNum}`;
+      shop.settings.nextAccessoryNumber = nextNum + 1;
+      await shop.save();
+    } else {
+      let nextNum = shop.settings.nextJobNumber || 1001;
+      while (await Order.exists({ shopId, jobId: `JOB-${nextNum}` })) {
+        nextNum += 1;
+      }
+      jobId = `JOB-${nextNum}`;
+      shop.settings.nextJobNumber = nextNum + 1;
+      await shop.save();
     }
-    const jobId = `JOB-${nextNum}`;
-    shop.settings.nextJobNumber = nextNum + 1;
-    await shop.save();
 
     // Increment customer orders count
     resolvedCustomer.totalOrdersCount += 1;
@@ -337,15 +348,149 @@ const orderController = {
   },
 
   /**
+   * Update Existing Job Card / Sale
+   * PUT /api/orders/:id
+   */
+  async update(req, res) {
+    const { id } = req.params;
+    const shopId = req.user.shopId;
+
+    const order = await Order.findOne({ _id: id, shopId });
+    if (!order) {
+      res.status(404).json({ success: false, message: 'Job card not found' });
+      return;
+    }
+
+    const {
+      customerName,
+      customerPhone,
+      orderType,
+      // Repair fields
+      deviceType,
+      brand,
+      model,
+      serialOrImei,
+      passcodePattern,
+      problemDescription,
+      photos,
+      assignedTechnicianId,
+      promisedDeliveryAt,
+      // Accessory fields
+      productName,
+      productPrice,
+      // Financials
+      estimatedCost,
+      advancePaid,
+      paymentMode,
+    } = req.body;
+
+    // Update customer snapshot & linked Customer model
+    if (customerName || customerPhone) {
+      if (customerName) order.customerSnapshot.name = customerName.trim();
+      if (customerPhone) {
+        const cleanPhone = customerPhone.replace(/\D/g, '').slice(-10);
+        order.customerSnapshot.phone = cleanPhone;
+      }
+      if (order.customerId) {
+        await Customer.updateOne(
+          { _id: order.customerId, shopId },
+          {
+            ...(customerName && { name: customerName.trim() }),
+            ...(customerPhone && { phone: customerPhone.replace(/\D/g, '').slice(-10) }),
+          }
+        );
+      }
+    }
+
+    const currentOrderType = orderType || order.orderType || 'repair';
+
+    if (currentOrderType === 'accessory') {
+      if (productName !== undefined) order.productName = productName.trim();
+      if (productPrice !== undefined) {
+        const priceNum = Number(productPrice) || 0;
+        order.productPrice = priceNum;
+        order.cost.estimated = priceNum;
+        order.cost.final = priceNum;
+        order.cost.advancePaid = priceNum;
+        order.cost.due = 0;
+        if (order.payments && order.payments.length > 0) {
+          order.payments[0].amount = priceNum;
+          if (paymentMode) order.payments[0].mode = paymentMode;
+        } else if (priceNum > 0) {
+          order.payments = [{
+            amount: priceNum,
+            mode: paymentMode || 'cash',
+            paidAt: new Date(),
+          }];
+        }
+      }
+    } else {
+      // Repair fields
+      if (deviceType !== undefined) order.deviceType = deviceType;
+      if (brand !== undefined) order.brand = brand.trim();
+      if (model !== undefined) order.model = model.trim();
+      if (serialOrImei !== undefined) order.serialOrImei = serialOrImei?.trim();
+      if (passcodePattern !== undefined) order.passcodePattern = passcodePattern?.trim();
+      if (problemDescription !== undefined) order.problemDescription = problemDescription.trim();
+      if (photos !== undefined) {
+        if (Array.isArray(photos)) {
+          order.photos = photos.slice(0, 5).filter(Boolean);
+        } else if (typeof photos === 'string') {
+          order.photos = [photos];
+        }
+      }
+      if (assignedTechnicianId !== undefined) {
+        order.assignedTechnicianId = assignedTechnicianId || undefined;
+      }
+      if (promisedDeliveryAt !== undefined) {
+        order.dates.promisedDeliveryAt = promisedDeliveryAt ? new Date(promisedDeliveryAt) : undefined;
+      }
+
+      // Cost recalculations
+      if (estimatedCost !== undefined || advancePaid !== undefined) {
+        const newEstimated = estimatedCost !== undefined ? Number(estimatedCost) : (order.cost.estimated || 0);
+        const newAdvance = advancePaid !== undefined ? Number(advancePaid) : (order.cost.advancePaid || 0);
+
+        if (newAdvance > newEstimated) {
+          res.status(400).json({ success: false, message: 'Advance payment cannot exceed the estimated price' });
+          return;
+        }
+
+        order.cost.estimated = newEstimated;
+        order.cost.final = newEstimated;
+        order.cost.advancePaid = newAdvance;
+        order.cost.due = Math.max(0, newEstimated - newAdvance);
+
+        if (order.payments && order.payments.length > 0) {
+          order.payments[0].amount = newAdvance;
+          if (paymentMode) order.payments[0].mode = paymentMode;
+        } else if (newAdvance > 0) {
+          order.payments = [{
+            amount: newAdvance,
+            mode: paymentMode || 'cash',
+            paidAt: new Date(),
+          }];
+        }
+      }
+    }
+
+    await order.save();
+    await order.populate('assignedTechnicianId', 'name phone');
+    await order.populate('customerId', 'name phone email address');
+
+    res.json({ success: true, order });
+  },
+
+  /**
    * Update Status (triggers Fast2SMS where applicable)
    * PATCH /api/orders/:id/status
-   * Body: { status: "repaired" | "delivered" | ... }
+   * Body: { status: "repaired" | "delivered" | "unrepairable" | ... }
    */
   async updateStatus(req, res) {
     const { id } = req.params;
-    const { status, serialOrImei, warranty, repairedBy, assignedTechnicianId } = req.body;
+    const { status, serialOrImei, warranty, repairedBy, assignedTechnicianId, unrepairableReason } = req.body;
 
-    const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'canceled'];
+    const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'unrepairable', 'canceled'];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ success: false, message: 'Invalid status' });
       return;
@@ -359,6 +504,10 @@ const orderController = {
 
     const prevStatus = order.status;
     order.status = status;
+
+    if (status === 'unrepairable' && unrepairableReason !== undefined) {
+      order.unrepairableReason = String(unrepairableReason).trim();
+    }
 
     if (serialOrImei !== undefined && serialOrImei !== null) {
       order.serialOrImei = String(serialOrImei).trim();

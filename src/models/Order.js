@@ -63,10 +63,11 @@ const OrderSchema = new Schema(
     productPrice: { type: Number },
     status: {
       type: String,
-      enum: ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'canceled'],
+      enum: ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'unrepairable', 'canceled'],
       default: 'pending',
       index: true,
     },
+    unrepairableReason: { type: String, trim: true },
     assignedTechnicianId: { type: Schema.Types.ObjectId, ref: 'User' },
     repairedBy: {
       userId: { type: Schema.Types.ObjectId, ref: 'User' },

@@ -23,6 +23,7 @@ const ShopSchema = new Schema(
       currency: { type: String, default: 'INR' },
       smsNotificationsEnabled: { type: Boolean, default: true },
       nextJobNumber: { type: Number, default: 1001 },
+      nextAccessoryNumber: { type: Number, default: 1001 },
     },
   },
   { timestamps: true }
