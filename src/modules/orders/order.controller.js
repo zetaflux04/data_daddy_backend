@@ -224,8 +224,17 @@ const orderController = {
       filter.customerId = customerId;
     }
 
-    if (status && typeof status === 'string' && status !== 'all') {
-      filter.status = status;
+    if (status && status !== 'all') {
+      if (Array.isArray(status)) {
+        filter.status = { $in: status.filter((s) => s && s !== 'all') };
+      } else if (typeof status === 'string') {
+        const statuses = status.split(',').map((s) => s.trim()).filter((s) => s && s !== 'all');
+        if (statuses.length > 1) {
+          filter.status = { $in: statuses };
+        } else if (statuses.length === 1) {
+          filter.status = statuses[0];
+        }
+      }
     }
 
     if (orderType && typeof orderType === 'string' && orderType !== 'all') {
