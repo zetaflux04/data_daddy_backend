@@ -61,6 +61,7 @@ const OrderSchema = new Schema(
     // Accessory-specific fields
     productName: { type: String, trim: true },
     productPrice: { type: Number },
+    productImage: { type: String, trim: true },
     status: {
       type: String,
       enum: ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'unrepairable', 'canceled'],

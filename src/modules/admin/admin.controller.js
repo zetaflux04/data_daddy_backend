@@ -864,6 +864,7 @@ const adminController = {
         assignedTechnicianId,
         productName,
         productPrice,
+        productImage,
         photos,
       } = req.body;
 
@@ -885,6 +886,10 @@ const adminController = {
       // Accessory-specific fields
       if (productName !== undefined) order.productName = productName?.trim();
       if (productPrice !== undefined) order.productPrice = Number(productPrice);
+      if (productImage !== undefined) {
+        order.productImage = productImage?.trim();
+        order.photos = productImage ? [productImage.trim()] : [];
+      }
 
       if (status) order.status = status;
       if (assignedTechnicianId !== undefined) {

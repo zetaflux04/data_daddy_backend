@@ -26,6 +26,7 @@ const orderController = {
       // Accessory fields
       productName,
       productPrice,
+      productImage,
       // Common fields
       estimatedCost = 0,
       advancePaid = 0,
@@ -171,6 +172,11 @@ const orderController = {
     if (orderType === 'accessory') {
       orderData.productName = productName.trim();
       orderData.productPrice = Number(productPrice || 0);
+      const singleImage = typeof productImage === 'string' ? productImage.trim() : (productImage?.url || (Array.isArray(photos) ? photos[0] : ''));
+      if (singleImage) {
+        orderData.productImage = singleImage;
+        orderData.photos = [singleImage];
+      }
     } else {
       orderData.deviceType = deviceType || 'mobile';
       orderData.brand = brand.trim();
@@ -378,6 +384,7 @@ const orderController = {
       // Accessory fields
       productName,
       productPrice,
+      productImage,
       // Financials
       estimatedCost,
       advancePaid,
@@ -423,6 +430,15 @@ const orderController = {
             paidAt: new Date(),
           }];
         }
+      }
+      if (productImage !== undefined) {
+        const singleImage = typeof productImage === 'string' ? productImage.trim() : (productImage?.url || '');
+        order.productImage = singleImage || undefined;
+        order.photos = singleImage ? [singleImage] : [];
+      } else if (photos !== undefined) {
+        const singleImage = Array.isArray(photos) ? (photos[0] || '') : (typeof photos === 'string' ? photos : '');
+        order.productImage = singleImage || undefined;
+        order.photos = singleImage ? [singleImage] : [];
       }
     } else {
       // Repair fields
