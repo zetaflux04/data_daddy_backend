@@ -35,6 +35,18 @@ const orderController = {
       promisedDeliveryAt,
     } = req.body;
 
+    const hasRepairFields = !!(brand?.trim() || model?.trim() || problemDescription?.trim());
+    const hasAccessoryFields = !!(productName?.trim() || (productPrice !== undefined && productPrice !== null && productPrice !== '' && Number(productPrice) > 0));
+
+    if (orderType === 'accessory' && hasRepairFields) {
+      res.status(400).json({ success: false, message: 'Accessory orders cannot include repair device details' });
+      return;
+    }
+    if (orderType === 'repair' && hasAccessoryFields) {
+      res.status(400).json({ success: false, message: 'Repair orders cannot include accessory product details' });
+      return;
+    }
+
     // Validate based on order type
     if (orderType === 'accessory') {
       if (!productName || !productName.trim()) {
@@ -418,7 +430,12 @@ const orderController = {
       }
     }
 
-    const currentOrderType = orderType || order.orderType || 'repair';
+    if (orderType && orderType !== order.orderType) {
+      res.status(400).json({ success: false, message: 'Order type cannot be changed after creation' });
+      return;
+    }
+
+    const currentOrderType = order.orderType || 'repair';
 
     if (currentOrderType === 'accessory') {
       if (productName !== undefined) order.productName = productName.trim();
@@ -513,7 +530,7 @@ const orderController = {
    */
   async updateStatus(req, res) {
     const { id } = req.params;
-    const { status, serialOrImei, warranty, repairedBy, assignedTechnicianId, unrepairableReason } = req.body;
+    const { status, serialOrImei, warranty, repairedBy, assignedTechnicianId, unrepairableReason, deliveryRemark } = req.body;
 
     const validStatuses = ['pending', 'in_progress', 'parts_delayed', 'repaired', 'delivered', 'unrepairable', 'canceled'];
     if (!validStatuses.includes(status)) {
@@ -521,7 +538,14 @@ const orderController = {
       return;
     }
 
-    const order = await Order.findOne({ _id: id, shopId: req.user.shopId });
+    const filter = { shopId: req.user.shopId };
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      filter._id = id;
+    } else {
+      filter.jobId = id;
+    }
+
+    const order = await Order.findOne(filter);
     if (!order) {
       res.status(404).json({ success: false, message: 'Order not found' });
       return;
@@ -530,8 +554,15 @@ const orderController = {
     const prevStatus = order.status;
     order.status = status;
 
-    if (status === 'unrepairable' && unrepairableReason !== undefined) {
-      order.unrepairableReason = String(unrepairableReason).trim();
+    if (status === 'unrepairable') {
+      const reason = String(unrepairableReason || '').trim();
+      if (!reason) {
+        res.status(400).json({ success: false, message: 'Unrepairable reason is required' });
+        return;
+      }
+      order.unrepairableReason = reason;
+    } else {
+      order.unrepairableReason = undefined;
     }
 
     if (serialOrImei !== undefined && serialOrImei !== null) {
@@ -566,6 +597,9 @@ const orderController = {
 
     if (status === 'delivered') {
       order.dates.deliveredAt = new Date();
+      if (deliveryRemark !== undefined) {
+        order.deliveryRemark = String(deliveryRemark).trim() || undefined;
+      }
     }
 
     if (repairedBy) {
@@ -634,17 +668,6 @@ const orderController = {
     const order = await Order.findOne({ _id: id, shopId: req.user.shopId });
     if (!order) {
       res.status(404).json({ success: false, message: 'Order not found' });
-      return;
-    }
-
-    const estimatePrice = order.cost?.final || order.cost?.estimated || 0;
-    const currentPaid = (order.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
-    const maxPayable = Math.max(0, estimatePrice - currentPaid);
-    if (payAmount > maxPayable || (currentPaid + payAmount) > estimatePrice) {
-      res.status(400).json({
-        success: false,
-        message: `Payment amount (₹${payAmount}) cannot exceed the remaining balance of ₹${maxPayable} (Estimate Price: ₹${estimatePrice}).`,
-      });
       return;
     }
 

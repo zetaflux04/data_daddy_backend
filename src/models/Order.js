@@ -69,6 +69,7 @@ const OrderSchema = new Schema(
       index: true,
     },
     unrepairableReason: { type: String, trim: true },
+    deliveryRemark: { type: String, trim: true },
     assignedTechnicianId: { type: Schema.Types.ObjectId, ref: 'User' },
     repairedBy: {
       userId: { type: Schema.Types.ObjectId, ref: 'User' },
