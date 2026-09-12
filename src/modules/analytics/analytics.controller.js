@@ -9,6 +9,7 @@ const analyticsController = {
    */
   async getDashboardSummary(req, res) {
     const shopId = new mongoose.Types.ObjectId(req.user.shopId);
+    const now = new Date();
 
     // 1. Order Status Counts
     const statusCounts = await Order.aggregate([
@@ -56,7 +57,7 @@ const analyticsController = {
     const netProfit = orderFinance.totalRevenueCollected - totalExpense;
 
     // 4. Today's quick numbers
-    const startOfToday = new Date(now7.getFullYear(), now7.getMonth(), now7.getDate(), 0, 0, 0, 0);
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
     const endOfYesterday = new Date(startOfToday.getTime() - 1);
 
@@ -90,10 +91,10 @@ const analyticsController = {
 
     // 5. Live Weekly Revenue Breakdown (Mon to Sun of current week)
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const currentDayOfWeek = now7.getDay(); // 0 is Sun, 1 is Mon...
+    const currentDayOfWeek = now.getDay(); // 0 is Sun, 1 is Mon...
     const mondayDiff = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
     
-    const startOfWeek = new Date(now7.getFullYear(), now7.getMonth(), now7.getDate() + mondayDiff, 0, 0, 0, 0);
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayDiff, 0, 0, 0, 0);
     const startOfLastWeek = new Date(startOfWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
     const endOfLastWeek = new Date(startOfWeek.getTime() - 1);
 
@@ -168,8 +169,8 @@ const analyticsController = {
     }
 
     // 6. Month & Year Revenue
-    const startOfMonth = new Date(now7.getFullYear(), now7.getMonth(), 1, 0, 0, 0, 0);
-    const startOfLastMonth = new Date(now7.getFullYear(), now7.getMonth() - 1, 1, 0, 0, 0, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
     const endOfLastMonth = new Date(startOfMonth.getTime() - 1);
 
     const thisMonthPayments = await Order.aggregate([
@@ -198,8 +199,8 @@ const analyticsController = {
       monthGrowthPct = 100;
     }
 
-    const startOfYear = new Date(now7.getFullYear(), 0, 1, 0, 0, 0, 0);
-    const startOfLastYear = new Date(now7.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+    const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const startOfLastYear = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
     const endOfLastYear = new Date(startOfYear.getTime() - 1);
 
     const thisYearPayments = await Order.aggregate([
