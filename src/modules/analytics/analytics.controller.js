@@ -1,6 +1,199 @@
 const { Order } = require('../../models/Order');
 const { Expense } = require('../../models/Expense');
+const { Customer } = require('../../models/Customer');
 const mongoose = require('mongoose');
+
+const PROBLEM_LABELS = [
+  'Display Broken',
+  'Charging Problem',
+  'Water Damage/ Dead',
+  'Battery Issue',
+  'Network Problem',
+  'No Power On',
+  'Touch Not Working',
+  'Insert Sim Problem',
+  'Camera Problem',
+  'Others',
+];
+
+const STATUS_META = [
+  { key: 'pending', label: 'Pending', color: '#F97316' },
+  { key: 'in_progress', label: 'In Progress', color: '#3B82F6' },
+  { key: 'parts_delayed', label: 'Parts Delayed', color: '#EAB308' },
+  { key: 'repaired', label: 'Ready for Delivery', color: '#10B981' },
+  { key: 'delivered', label: 'Delivered', color: '#8B5CF6' },
+  { key: 'unrepairable', label: 'Unrepairable', color: '#64748B' },
+  { key: 'canceled', label: 'Canceled', color: '#EF4444' },
+];
+
+const DEVICE_COLORS = {
+  mobile: '#3B82F6',
+  laptop: '#8B5CF6',
+  tablet: '#10B981',
+  smartwatch: '#F59E0B',
+  other: '#64748B',
+};
+
+function getRangeBounds(range, from, to, now) {
+  if (from || to) {
+    const start = from ? new Date(from) : null;
+    let end = to ? new Date(to) : null;
+    if (end) {
+      end = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+    }
+    return { start, end, bucket: 'day' };
+  }
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  switch (range) {
+    case 'today':
+      return { start: startOfToday, end: now, bucket: 'hour' };
+    case 'week': {
+      const currentDayOfWeek = now.getDay();
+      const mondayDiff = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayDiff, 0, 0, 0, 0);
+      return { start: startOfWeek, end: now, bucket: 'day' };
+    }
+    case 'month':
+      return { start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0), end: now, bucket: 'day' };
+    case 'year':
+      return { start: new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0), end: now, bucket: 'week' };
+    case 'all':
+    default:
+      return { start: null, end: now, bucket: 'month' };
+  }
+}
+
+function applyDateFilter(match, start, end, field = 'createdAt') {
+  if (!start && !end) return match;
+  const dateFilter = {};
+  if (start) dateFilter.$gte = start;
+  if (end) dateFilter.$lte = end;
+  match[field] = dateFilter;
+  return match;
+}
+
+function formatDayKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatDayLabel(date) {
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function padSeries(start, end, valueMap, bucket) {
+  const series = [];
+  if (!start) return series;
+  const cursor = new Date(start);
+  const last = end ? new Date(end) : new Date();
+
+  if (bucket === 'hour') {
+    for (let h = 0; h <= 23; h += 1) {
+      const key = String(h);
+      const hour = h % 12 === 0 ? 12 : h % 12;
+      const suffix = h < 12 ? 'AM' : 'PM';
+      series.push({
+        day: `${hour} ${suffix}`,
+        amount: valueMap[key] || 0,
+        count: valueMap[key] || 0,
+      });
+    }
+    return series;
+  }
+
+  if (bucket === 'week') {
+    const weekCursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+    let weekNum = 1;
+    while (weekCursor <= last) {
+      const key = `${weekCursor.getFullYear()}-W${weekNum}`;
+      series.push({
+        day: `W${weekNum}`,
+        amount: valueMap[key] || 0,
+        count: valueMap[key] || 0,
+      });
+      weekCursor.setDate(weekCursor.getDate() + 7);
+      weekNum += 1;
+    }
+    return series;
+  }
+
+  if (bucket === 'month') {
+    const monthCursor = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const lastMonth = new Date(last.getFullYear(), last.getMonth(), 1);
+    while (monthCursor <= lastMonth) {
+      const key = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`;
+      series.push({
+        day: monthCursor.toLocaleDateString('en-IN', { month: 'short' }),
+        amount: valueMap[key] || 0,
+        count: valueMap[key] || 0,
+      });
+      monthCursor.setMonth(monthCursor.getMonth() + 1);
+    }
+    return series;
+  }
+
+  const dayCursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+  const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+  while (dayCursor <= lastDay) {
+    const key = formatDayKey(dayCursor);
+    series.push({
+      day: formatDayLabel(dayCursor),
+      amount: valueMap[key] || 0,
+      count: valueMap[key] || 0,
+    });
+    dayCursor.setDate(dayCursor.getDate() + 1);
+  }
+  return series;
+}
+
+function dateGroupId(bucket) {
+  if (bucket === 'hour') {
+    return { $hour: '$createdAt' };
+  }
+  if (bucket === 'week') {
+    return {
+      $concat: [
+        { $toString: { $year: '$createdAt' } },
+        '-W',
+        { $toString: { $week: '$createdAt' } },
+      ],
+    };
+  }
+  if (bucket === 'month') {
+    return {
+      $dateToString: { format: '%Y-%m', date: '$createdAt' },
+    };
+  }
+  return {
+    $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+  };
+}
+
+function paymentDateGroupId(bucket) {
+  if (bucket === 'hour') {
+    return { $hour: '$payments.paidAt' };
+  }
+  if (bucket === 'week') {
+    return {
+      $concat: [
+        { $toString: { $year: '$payments.paidAt' } },
+        '-W',
+        { $toString: { $week: '$payments.paidAt' } },
+      ],
+    };
+  }
+  if (bucket === 'month') {
+    return {
+      $dateToString: { format: '%Y-%m', date: '$payments.paidAt' },
+    };
+  }
+  return {
+    $dateToString: { format: '%Y-%m-%d', date: '$payments.paidAt' },
+  };
+}
 
 const analyticsController = {
   /**
@@ -374,6 +567,259 @@ const analyticsController = {
         },
         revenueByMode,
         expensesByCategory,
+      },
+    });
+  },
+
+  /**
+   * Shop analytics for charts
+   * GET /api/analytics/insights?range=today|week|month|year|all&from=&to=
+   */
+  async getInsights(req, res) {
+    const shopId = new mongoose.Types.ObjectId(req.user.shopId);
+    const now = new Date();
+    const range = typeof req.query.range === 'string' ? req.query.range : 'month';
+    const { start, end, bucket } = getRangeBounds(range, req.query.from, req.query.to, now);
+
+    const orderMatch = applyDateFilter({ shopId }, start, end, 'createdAt');
+    const customerMatch = applyDateFilter({ shopId }, start, end, 'createdAt');
+
+    const [
+      financialAgg,
+      statusCounts,
+      deviceAgg,
+      accessoryDocs,
+      serviceDocs,
+      paymentSeries,
+      fallbackRevenueSeries,
+      jobsSeries,
+      customerSeries,
+      orderTypeAgg,
+    ] = await Promise.all([
+      Order.aggregate([
+        { $match: orderMatch },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: { $ifNull: ['$cost.advancePaid', 0] } },
+            totalDuesPending: { $sum: { $ifNull: ['$cost.due', 0] } },
+            totalJobs: { $sum: 1 },
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: orderMatch },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Order.aggregate([
+        { $match: { ...orderMatch, orderType: 'repair' } },
+        {
+          $group: {
+            _id: { $ifNull: ['$deviceType', 'other'] },
+            count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ['$cost.advancePaid', 0] } },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      Order.find({ ...orderMatch, orderType: 'accessory' })
+        .select('productName cost productPrice')
+        .lean(),
+      Order.find({ ...orderMatch, orderType: 'repair' })
+        .select('problemDescription')
+        .lean(),
+      Order.aggregate([
+        { $match: { shopId } },
+        { $unwind: '$payments' },
+        ...(start || end
+          ? [{
+              $match: {
+                'payments.paidAt': {
+                  ...(start ? { $gte: start } : {}),
+                  ...(end ? { $lte: end } : {}),
+                },
+              },
+            }]
+          : []),
+        {
+          $group: {
+            _id: paymentDateGroupId(bucket),
+            totalAmount: { $sum: '$payments.amount' },
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: orderMatch },
+        {
+          $group: {
+            _id: dateGroupId(bucket),
+            totalAmount: { $sum: { $ifNull: ['$cost.advancePaid', 0] } },
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: orderMatch },
+        {
+          $group: {
+            _id: dateGroupId(bucket),
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      Customer.aggregate([
+        { $match: customerMatch },
+        {
+          $group: {
+            _id: dateGroupId(bucket),
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: orderMatch },
+        {
+          $group: {
+            _id: { $ifNull: ['$orderType', 'repair'] },
+            count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ['$cost.advancePaid', 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const finance = financialAgg[0] || { totalRevenue: 0, totalDuesPending: 0, totalJobs: 0 };
+
+    const statusMap = {};
+    STATUS_META.forEach((s) => { statusMap[s.key] = 0; });
+    statusCounts.forEach((item) => {
+      if (item._id in statusMap) statusMap[item._id] = item.count;
+    });
+    const statusTotal = Object.values(statusMap).reduce((sum, n) => sum + n, 0);
+    const statusDistribution = STATUS_META.map((s) => ({
+      key: s.key,
+      label: s.label,
+      count: statusMap[s.key],
+      percentage: statusTotal > 0 ? Math.round((statusMap[s.key] / statusTotal) * 100) : 0,
+      color: s.color,
+    }));
+
+    const deviceTypes = deviceAgg.map((item) => ({
+      label: item._id === 'smartwatch' ? 'Watch' : (item._id || 'other').charAt(0).toUpperCase() + (item._id || 'other').slice(1),
+      key: item._id || 'other',
+      count: item.count,
+      revenue: item.revenue || 0,
+      color: DEVICE_COLORS[item._id] || DEVICE_COLORS.other,
+    }));
+
+    const accessoryMap = {};
+    accessoryDocs.forEach((doc) => {
+      const names = String(doc.productName || 'Others')
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const parts = names.length ? names : ['Others'];
+      const revenue = (doc.cost?.advancePaid ?? doc.productPrice ?? 0) / parts.length;
+      parts.forEach((name) => {
+        if (!accessoryMap[name]) accessoryMap[name] = { label: name, count: 0, revenue: 0 };
+        accessoryMap[name].count += 1;
+        accessoryMap[name].revenue += revenue;
+      });
+    });
+    const accessories = Object.values(accessoryMap)
+      .map((item) => ({ ...item, revenue: Math.round(item.revenue) }))
+      .sort((a, b) => b.count - a.count);
+
+    const serviceMap = {};
+    PROBLEM_LABELS.forEach((label) => { serviceMap[label] = 0; });
+    serviceDocs.forEach((doc) => {
+      const parts = String(doc.problemDescription || '')
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (!parts.length) {
+        serviceMap.Others += 1;
+        return;
+      }
+      parts.forEach((part) => {
+        if (serviceMap[part] !== undefined) serviceMap[part] += 1;
+        else serviceMap.Others += 1;
+      });
+    });
+    const serviceTypes = PROBLEM_LABELS
+      .map((label) => ({ label, count: serviceMap[label] }))
+      .filter((item) => item.count > 0);
+
+    const orderTypes = orderTypeAgg.map((item) => ({
+      label: item._id === 'accessory' ? 'Accessory Sale' : 'Repair',
+      key: item._id,
+      count: item.count,
+      revenue: item.revenue || 0,
+      color: item._id === 'accessory' ? '#F59E0B' : '#2563EB',
+    }));
+
+    const paymentMap = {};
+    paymentSeries.forEach((item) => {
+      paymentMap[String(item._id)] = item.totalAmount || 0;
+    });
+    const fallbackMap = {};
+    fallbackRevenueSeries.forEach((item) => {
+      fallbackMap[String(item._id)] = item.totalAmount || 0;
+    });
+    const revenueSource = Object.keys(paymentMap).length ? paymentMap : fallbackMap;
+    const seriesStart = start || (fallbackRevenueSeries.length
+      ? new Date(Math.min(...fallbackRevenueSeries.map((i) => {
+        const key = String(i._id);
+        if (bucket === 'month' && /^\d{4}-\d{2}$/.test(key)) return new Date(`${key}-01`).getTime();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(key)) return new Date(key).getTime();
+        return now.getTime();
+      })))
+      : new Date(now.getFullYear(), now.getMonth(), 1));
+
+    const keyedSeries = (valueMap) => Object.keys(valueMap).sort().map((key, idx) => ({
+      day: `W${idx + 1}`,
+      amount: valueMap[key] || 0,
+      count: valueMap[key] || 0,
+    }));
+
+    let revenueOverview = bucket === 'week'
+      ? keyedSeries(revenueSource)
+      : padSeries(seriesStart, end || now, revenueSource, bucket);
+
+    const jobsMap = {};
+    jobsSeries.forEach((item) => { jobsMap[String(item._id)] = item.count || 0; });
+    let jobsByDay = bucket === 'week'
+      ? keyedSeries(jobsMap)
+      : padSeries(seriesStart, end || now, jobsMap, bucket);
+
+    const customersMap = {};
+    customerSeries.forEach((item) => { customersMap[String(item._id)] = item.count || 0; });
+    let customersByDay = bucket === 'week'
+      ? keyedSeries(customersMap)
+      : padSeries(seriesStart, end || now, customersMap, bucket);
+
+    if (bucket === 'day' && jobsByDay.length > 31) {
+      jobsByDay = jobsByDay.filter((_, i) => i % Math.ceil(jobsByDay.length / 31) === 0);
+      customersByDay = customersByDay.filter((_, i) => i % Math.ceil(customersByDay.length / 31) === 0);
+      revenueOverview = revenueOverview.filter((_, i) => i % Math.ceil(revenueOverview.length / 31) === 0);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        range,
+        kpis: {
+          totalRevenue: finance.totalRevenue || 0,
+          pendingDues: finance.totalDuesPending || 0,
+          totalJobs: finance.totalJobs || 0,
+        },
+        revenueOverview,
+        statusDistribution,
+        deviceTypes,
+        accessories,
+        serviceTypes,
+        orderTypes,
+        customersByDay,
+        jobsByDay,
       },
     });
   },

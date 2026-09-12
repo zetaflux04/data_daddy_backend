@@ -7,6 +7,7 @@ const router = Router();
 router.use(authenticateJwt);
 
 router.get('/summary', analyticsController.getDashboardSummary);
+router.get('/insights', analyticsController.getInsights);
 router.get('/profit-loss', requireRole(['owner']), analyticsController.getProfitLoss);
 
 module.exports = router;
