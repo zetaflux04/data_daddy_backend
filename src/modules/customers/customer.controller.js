@@ -14,6 +14,9 @@ const customerController = {
     if (dateRange === 'today') {
       dateFilterStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       dateFilterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    } else if (dateRange === 'yesterday') {
+      dateFilterStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      dateFilterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
     } else if (dateRange === 'week') {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1);
@@ -21,7 +24,12 @@ const customerController = {
       dateFilterStart.setHours(0, 0, 0, 0);
       dateFilterEnd = new Date();
       dateFilterEnd.setHours(23, 59, 59, 999);
-    } else if (dateRange === 'month') {
+    } else if (dateRange === 'last_7_days') {
+      dateFilterStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      dateFilterStart.setHours(0, 0, 0, 0);
+      dateFilterEnd = new Date();
+      dateFilterEnd.setHours(23, 59, 59, 999);
+    } else if (dateRange === 'month' || dateRange === 'this_month') {
       dateFilterStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       dateFilterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     } else if (dateRange === 'year') {
