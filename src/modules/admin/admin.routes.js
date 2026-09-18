@@ -51,6 +51,18 @@ router.get('/notifications', adminController.getNotifications);
 router.post('/notifications', adminController.createNotification);
 router.delete('/notifications/:id', adminController.deleteNotification);
 
+// Banner Management (Replaces Dispatched Announcements Log / Mobile & Website banners)
+router.get('/banners', adminController.getBanners);
+router.post('/banners', adminController.createBanner);
+router.put('/banners/:id', adminController.updateBanner);
+router.delete('/banners/:id', adminController.deleteBanner);
+
+// Repair Guides Management
+router.get('/guides', adminController.getGuides);
+router.post('/guides', adminController.createGuide);
+router.put('/guides/:id', adminController.updateGuide);
+router.delete('/guides/:id', adminController.deleteGuide);
+
 // Demo / Multi-Tenant Seeding
 router.post('/seed', adminController.seedData);
 

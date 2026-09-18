@@ -13,6 +13,7 @@ const subscriptionRoutes = require('./modules/subscriptions/subscription.routes'
 const adminRoutes = require('./modules/admin/admin.routes');
 const notificationRoutes = require('./modules/notifications/notification.routes');
 const uploadRoutes = require('./modules/uploads/upload.routes');
+const bannerRoutes = require('./modules/banners/banner.routes');
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/banners', bannerRoutes);
 
 // Error Handling
 app.use(errorHandler);

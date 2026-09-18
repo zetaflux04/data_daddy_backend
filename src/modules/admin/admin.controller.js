@@ -4,6 +4,8 @@ const { Customer } = require('../../models/Customer');
 const { Order } = require('../../models/Order');
 const { Expense } = require('../../models/Expense');
 const { Notification } = require('../../models/Notification');
+const { Banner } = require('../../models/Banner');
+const { RepairGuide } = require('../../models/RepairGuide');
 const { seedMultiTenantData } = require('./admin.seed');
 const mongoose = require('mongoose');
 
@@ -1011,6 +1013,220 @@ const adminController = {
       const { force = false } = req.body;
       const result = await seedMultiTenantData(Boolean(force));
       res.json({ success: true, ...result });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * Banners Management
+   * GET /api/admin/banners
+   */
+  async getBanners(req, res) {
+    try {
+      const { platform } = req.query;
+      const query = {};
+      if (platform && platform !== 'all') {
+        query.targetPlatform = { $in: [platform, 'all'] };
+      }
+      const banners = await Banner.find(query).sort({ displayOrder: 1, createdAt: -1 });
+      res.json({ success: true, banners });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * POST /api/admin/banners
+   */
+  async createBanner(req, res) {
+    try {
+      const {
+        title,
+        subtitle,
+        tag,
+        tagBg,
+        tagColor,
+        ctaText,
+        ctaRoute,
+        gradientColors,
+        badgeIcon,
+        badgeBg,
+        imageUrl,
+        targetPlatform,
+        isActive,
+        displayOrder,
+      } = req.body;
+
+      if (!title || !subtitle) {
+        res.status(400).json({ success: false, message: 'Title and Subtitle are required' });
+        return;
+      }
+
+      const banner = await Banner.create({
+        title,
+        subtitle,
+        tag: tag || 'PROMOTION',
+        tagBg: tagBg || 'rgba(255, 255, 255, 0.2)',
+        tagColor: tagColor || '#FFFFFF',
+        ctaText: ctaText || 'Explore Now',
+        ctaRoute: ctaRoute || '',
+        gradientColors: gradientColors || ['#4F46E5', '#7C3AED'],
+        badgeIcon: badgeIcon || 'gift',
+        badgeBg: badgeBg || '#FFFFFF',
+        imageUrl: imageUrl || '',
+        targetPlatform: targetPlatform || 'all',
+        isActive: isActive !== undefined ? isActive : true,
+        displayOrder: displayOrder || 0,
+      });
+
+      res.status(201).json({ success: true, banner });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * PUT /api/admin/banners/:id
+   */
+  async updateBanner(req, res) {
+    try {
+      const { id } = req.params;
+      const updated = await Banner.findByIdAndUpdate(id, { $set: req.body }, { new: true });
+      if (!updated) {
+        res.status(404).json({ success: false, message: 'Banner not found' });
+        return;
+      }
+      res.json({ success: true, banner: updated });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * DELETE /api/admin/banners/:id
+   */
+  async deleteBanner(req, res) {
+    try {
+      const { id } = req.params;
+      const deleted = await Banner.findByIdAndDelete(id);
+      if (!deleted) {
+        res.status(404).json({ success: false, message: 'Banner not found' });
+        return;
+      }
+      res.json({ success: true, message: 'Banner deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * Repair Guides Management
+   * GET /api/admin/guides
+   */
+  async getGuides(req, res) {
+    try {
+      const { brand, model, problemCategory, search } = req.query;
+      const query = {};
+
+      if (brand) {
+        query.brand = new RegExp(brand, 'i');
+      }
+      if (model) {
+        query.model = new RegExp(model, 'i');
+      }
+      if (problemCategory) {
+        query.problemCategory = problemCategory;
+      }
+      if (search) {
+        query.$or = [
+          { title: new RegExp(search, 'i') },
+          { brand: new RegExp(search, 'i') },
+          { model: new RegExp(search, 'i') },
+        ];
+      }
+
+      const guides = await RepairGuide.find(query).sort({ createdAt: -1 });
+      res.json({ success: true, guides });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * POST /api/admin/guides
+   */
+  async createGuide(req, res) {
+    try {
+      const {
+        title,
+        brand,
+        model,
+        problemCategory,
+        summary,
+        steps,
+        videoS3Key,
+        schematicPdfS3Key,
+        difficulty,
+        isPremium,
+      } = req.body;
+
+      if (!title || !brand || !model || !problemCategory || !summary) {
+        res.status(400).json({
+          success: false,
+          message: 'Title, brand, model, problem category, and summary are required',
+        });
+        return;
+      }
+
+      const guide = await RepairGuide.create({
+        title,
+        brand,
+        model,
+        problemCategory,
+        summary,
+        steps: steps || [],
+        videoS3Key,
+        schematicPdfS3Key,
+        difficulty: difficulty || 'medium',
+        isPremium: isPremium !== undefined ? isPremium : true,
+      });
+
+      res.status(201).json({ success: true, guide });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * PUT /api/admin/guides/:id
+   */
+  async updateGuide(req, res) {
+    try {
+      const { id } = req.params;
+      const updated = await RepairGuide.findByIdAndUpdate(id, { $set: req.body }, { new: true });
+      if (!updated) {
+        res.status(404).json({ success: false, message: 'Guide not found' });
+        return;
+      }
+      res.json({ success: true, guide: updated });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  /**
+   * DELETE /api/admin/guides/:id
+   */
+  async deleteGuide(req, res) {
+    try {
+      const { id } = req.params;
+      const deleted = await RepairGuide.findByIdAndDelete(id);
+      if (!deleted) {
+        res.status(404).json({ success: false, message: 'Guide not found' });
+        return;
+      }
+      res.json({ success: true, message: 'Guide deleted successfully' });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
